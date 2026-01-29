@@ -1,17 +1,18 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import io
 import re
-from PyPDF2 import PdfReader, PdfWriter, PdfMerger
-from fpdf import FPDF
+import requests
+from io import BytesIO
+from PIL import Image as PILImage
+from PyPDF2 import PdfReader, PdfWriter
 import pdfplumber
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
 
 # --- CONFIGURATION & CONSTANTS ---
 st.set_page_config(
@@ -20,64 +21,56 @@ st.set_page_config(
     layout="centered"
 )
 
-# Define colors matching the Vaya/Inertia theme (Soft Earthy Tones)
+# Colors
 COLOR_PRIMARY = "#2C3E50"  # Dark Blue/Grey
 COLOR_ACCENT = "#D4A373"   # Sand/Gold
 COLOR_BG = "#F9F7F2"       # Off-white
 
-# Custom CSS for Streamlit UI
+# Logo URL
+LOGO_URL = "https://ik.imagekit.io/xtj3m9hth/image.png"
+
+# CSS Styling
 st.markdown(f"""
 <style>
-    .stApp {{
-        background-color: {COLOR_BG};
-    }}
-    h1 {{
-        color: {COLOR_PRIMARY};
-        font-family: 'Helvetica', sans-serif;
-    }}
-    .stButton>button {{
-        background-color: {COLOR_PRIMARY};
-        color: white;
-        border-radius: 5px;
-        padding: 10px 20px;
-        font-size: 16px;
-    }}
-    .stButton>button:hover {{
-        background-color: {COLOR_ACCENT};
-        color: {COLOR_PRIMARY};
-    }}
-    .upload-file {{
-        border: 2px dashed {COLOR_ACCENT};
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        background-color: white;
-    }}
+    .stApp {{ background-color: {COLOR_BG}; }}
+    h1 {{ color: {COLOR_PRIMARY}; font-family: 'Helvetica', sans-serif; }}
+    .stButton>button {{ background-color: {COLOR_PRIMARY}; color: white; border-radius: 5px; }}
+    .stButton>button:hover {{ background-color: {COLOR_ACCENT}; color: {COLOR_PRIMARY}; }}
 </style>
 """, unsafe_allow_html=True)
 
 # --- HELPER FUNCTIONS ---
 
+def download_logo(url):
+    """Downloads the logo image and returns it as a BytesIO object."""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return BytesIO(response.content)
+    except Exception as e:
+        st.error(f"Could not download logo: {e}")
+        return None
+
 def normalize_text(text):
-    """Removes special characters and accents to help match Unit Types in PDF."""
+    """Simple text normalization for searching."""
     if not text:
         return ""
-    # Remove accents
-    text = text.replace('ū', 'u').replace('ō', 'o').replace('ē', 'e').replace('ī', 'i').replace('ā', 'a')
-    # Remove non-alphanumeric (keep spaces)
-    text = re.sub(r'[^\w\s]', '', text).lower()
-    return text.strip()
+    return text.lower().strip()
 
-def find_pages_in_pdf(pdf_bytes, search_term):
+def find_limited_pages_in_pdf(pdf_bytes, search_term, limit=4):
     """
     Scans PDF for pages containing the search term.
-    Returns a list of page indices (0-based).
+    Returns a list of page indices (0-based), limited to 'limit'.
     """
     found_pages = []
     try:
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
             search_clean = normalize_text(search_term)
+            
             for i, page in enumerate(pdf.pages):
+                if len(found_pages) >= limit:
+                    break
+                
                 text = page.extract_text()
                 if text:
                     page_clean = normalize_text(text)
@@ -87,69 +80,49 @@ def find_pages_in_pdf(pdf_bytes, search_term):
         st.error(f"Error reading PDF: {e}")
     return found_pages
 
-def generate_offer_pdf(unit_data, logo_path=None):
+def generate_offer_pdf(unit_data, pdf_search_term, logo_bytes):
     """
-    Generates the specific Offer Letter pages using ReportLab.
-    Returns PDF as bytes.
+    Generates the Cover and Details pages using ReportLab.
     """
-    buffer = io.BytesIO()
+    buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
-
-    # Container for the 'Flowable' objects
     elements = []
 
     # Styles
     styles = getSampleStyleSheet()
-    style_title = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=COLOR_PRIMARY,
-        spaceAfter=30,
-        alignment=TA_CENTER
-    )
-    style_body = ParagraphStyle(
-        'CustomBody',
-        parent=styles['BodyText'],
-        fontSize=11,
-        leading=16,
-        spaceAfter=12,
-        alignment=TA_LEFT
-    )
-    style_highlight = ParagraphStyle(
-        'Highlight',
-        parent=styles['Heading2'],
-        fontSize=14,
-        textColor=COLOR_ACCENT,
-        spaceBefore=20,
-        spaceAfter=10
-    )
+    style_title = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, textColor=COLOR_PRIMARY, spaceAfter=30, alignment=TA_CENTER)
+    style_body = ParagraphStyle('CustomBody', parent=styles['BodyText'], fontSize=11, leading=16, spaceAfter=12, alignment=TA_LEFT)
+    style_highlight = ParagraphStyle('Highlight', parent=styles['Heading2'], fontSize=14, textColor=COLOR_ACCENT, spaceBefore=20, spaceAfter=10)
 
-    # --- PAGE 1: COVER ---
-    # Ideally, we would place the Inertia Logo here.
-    # Since we don't have the file, we add a placeholder.
-    # if logo_path:
-    #     elements.append(Image(logo_path, 2*inch, 1*inch, hAlign='CENTER'))
-    
+    # --- PAGE 1: COVER WITH LOGO ---
+    if logo_bytes:
+        try:
+            img_reader = ImageReader(logo_bytes)
+            # Calculate aspect ratio to fit width ~4 inches
+            img_width = 4 * inch
+            img_height = (img_reader.getSize()[1] / img_reader.getSize()[0]) * img_width
+            
+            elements.append(Image(logo_bytes, width=img_width, height=img_height, hAlign='CENTER'))
+            elements.append(Spacer(1, 0.5*inch))
+        except:
+            st.warning("Logo file format not supported for PDF generation.")
+
     elements.append(Paragraph("JEFaira - Vaya", style_title))
     elements.append(Spacer(1, 0.2*inch))
     elements.append(Paragraph("RESERVATION & OFFER LETTER", style_title))
     elements.append(Spacer(1, 2*inch))
     elements.append(Paragraph("Prepared for:", style_body))
     elements.append(Paragraph(f"Unit Reference: <b>{unit_data['Unit Number']}</b>", style_highlight))
-    
-    # Decorative line
     elements.append(Spacer(1, 1*inch))
     elements.append(Paragraph("Inertia Properties", style_body))
     elements.append(Paragraph("www.inertiaegypt.com", style_body))
     
     elements.append(PageBreak())
 
-    # --- PAGE 2: UNIT DETAILS (The Core Requirement) ---
-    elements.append(Paragraph("UNIT DETAILS & SPECIFICATIONS", style_title))
+    # --- PAGE 2: UNIT DETAILS ---
+    elements.append(Paragraph("UNIT DETAILS", style_title))
     elements.append(Spacer(1, 0.3*inch))
 
-    # The specific paragraph requested
     details_text = (
         f"Vaya <b>{unit_data['Unit Number']}</b>. "
         f"{unit_data['Dev Name']}. "
@@ -158,11 +131,9 @@ def generate_offer_pdf(unit_data, logo_path=None):
         f"Price = {unit_data['Final Price']}. "
         f"5% Down Payment. Delivery {unit_data['Delivery Date']}."
     )
-    
     elements.append(Paragraph(details_text, style_body))
     elements.append(Spacer(1, 0.5*inch))
 
-    # Additional details from CSV for completeness
     elements.append(Paragraph("SPECIFICATION SUMMARY", style_highlight))
     details_table = f"""
     <b>Development:</b> {unit_data['Dev Name']}<br/>
@@ -170,10 +141,9 @@ def generate_offer_pdf(unit_data, logo_path=None):
     <b>Floor:</b> {unit_data['Floor']}<br/>
     <b>Bedrooms:</b> {unit_data['No.Bedrooms']}<br/>
     <b>BUA with Terraces:</b> {unit_data['BUA with Terraces']} m²<br/>
-    <b>Garden Area:</b> {unit_data['Garden']} m²<br/>
-    <b>Roof Area:</b> {unit_data['Roof Area']} m²<br/>
-    <b>Maid Room:</b> {'Yes' if unit_data['Maid Room'] == 'Yes' else 'No'}<br/>
-    <b>Touristic Licensed:</b> {'Yes' if unit_data['Touristic Status'] == 'Yes' else 'No'}
+    <b>Price:</b> {unit_data['Final Price']} EGP<br/>
+    <b>Maid Room:</b> {unit_data['Maid Room']}<br/>
+    <b>Status:</b> {unit_data['Status']}
     """
     elements.append(Paragraph(details_table, style_body))
     elements.append(Spacer(1, 0.5*inch))
@@ -186,147 +156,146 @@ def generate_offer_pdf(unit_data, logo_path=None):
     """
     elements.append(Paragraph(terms, style_body))
 
-    # Build the PDF
     doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
 
-# --- MAIN STREAMLIT APP ---
+# --- MAIN APPLICATION ---
 
 def main():
     st.title("Vaya Offer Letter Generator")
     st.markdown("---")
 
-    # Sidebar or Main Area for Inputs? Main area is simpler for this request.
+    # --- STEP 1: FILE UPLOADS ---
+    col_csv, col_pdf = st.columns(2)
     
-    # 1. Upload CSV
-    st.subheader("1. Upload Inventory CSV")
-    csv_file = st.file_uploader("Select the Inertia Inventory CSV file", type=['csv'])
+    with col_csv:
+        csv_file = st.file_uploader("1. Upload Inventory CSV", type=['csv'])
     
-    # 2. Upload PDF Brochure
-    st.subheader("2. Upload E-Brochure PDF")
-    pdf_file = st.file_uploader("Select the Vaya E-Brochure PDF file", type=['pdf'])
+    with col_pdf:
+        pdf_file = st.file_uploader("2. Upload E-Brochure PDF", type=['pdf'])
 
-    # 3. Input Unit Number
-    st.subheader("3. Unit Details")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        unit_input = st.text_input("Enter Unit Number (e.g., JF11-VSV-001)", "")
-    with col2:
-        st.write("") # Spacer
-        generate_btn = st.button("Generate Offer Letter", type="primary")
+    # --- STEP 2: UNIT INPUTS ---
+    st.markdown("### 3. Select Unit & Brochure Images")
+    st.info("Enter the Unit Number. The app will automatically try to match the Brochure Name from the CSV. You can edit it if needed.")
 
-    # --- LOGIC SECTION ---
+    # Session State to hold the PDF search term so it doesn't reset on rerun
+    if 'pdf_search_term' not in st.session_state:
+        st.session_state.pdf_search_term = ""
 
-    if generate_btn:
-        if not csv_file or not pdf_file or not unit_input:
-            st.error("Please upload both the CSV and PDF Brochure, and enter a Unit Number.")
-            st.stop()
+    col_unit, col_term = st.columns([2, 2])
+    
+    with col_unit:
+        unit_input = st.text_input("Unit Number (e.g., JF11-VSV-001)", "")
+    
+    with col_term:
+        # The user asked for a separate field to specify the PDF images
+        pdf_input = st.text_input("Brochure Section Name (e.g., The Una Villa)", st.session_state.pdf_search_term)
 
-        # Step A: Process CSV
+    # --- SMART MAPPING LOGIC ---
+    if csv_file and unit_input:
         try:
             df = pd.read_csv(csv_file)
-            # Normalize column names just in case of spaces
             df.columns = df.columns.str.strip()
             
             # Find the unit
             unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
             
-            if unit_row.empty:
-                st.error(f"Unit Number '{unit_input}' not found in the CSV.")
+            if not unit_row.empty:
+                unit_data = unit_row.iloc[0].to_dict()
+                
+                # If the user hasn't manually typed a search term yet, 
+                # Auto-fill it with the 'Dev Name' from the CSV (The Smart Solution)
+                if not pdf_input: 
+                    st.session_state.pdf_search_term = unit_data.get('Dev Name', '')
+                    pdf_input = st.session_state.pdf_search_term
+                    # Rerun to update the text input value (streamlit quirk)
+                    # st.rerun() # Optional: might flicker, so we let the user see the value in the logic below
+                
+            else:
+                st.error("Unit number not found in CSV.")
                 st.stop()
-            
-            unit_data = unit_row.iloc[0].to_dict()
-            st.success(f"Unit Found: {unit_data['Dev Name']}")
-
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
             st.stop()
 
-        # Step B: Process PDF Brochure
-        try:
-            pdf_bytes = pdf_file.read()
-            
-            # Search for the Unit Type in the PDF (e.g., "The Una Villa")
-            # We search for "Dev Name" column from CSV
-            unit_type_name = unit_data['Dev Name']
-            st.info(f"Searching brochure for: {unit_type_name}...")
-            
-            relevant_pages = find_pages_in_pdf(pdf_bytes, unit_type_name)
-            
-            # Also try to find "Master Plan" and "Introduction" pages based on keywords
-            intro_pages = find_pages_in_pdf(pdf_bytes, "Introduction") or find_pages_in_pdf(pdf_bytes, "In the heart")
-            masterplan_pages = find_pages_in_pdf(pdf_bytes, "Master Plan") or find_pages_in_pdf(pdf_bytes, "DESTINATION MASTER PLAN")
-            
-            if not relevant_pages:
-                st.warning(f"Could not find specific unit pages for '{unit_type_name}' in the brochure. Using brochure as is.")
+    # --- GENERATE BUTTON ---
+    generate_btn = st.button("Generate Offer Letter", type="primary", use_container_width=True)
 
-        except Exception as e:
-            st.error(f"Error processing PDF Brochure: {e}")
+    if generate_btn:
+        if not csv_file or not pdf_file:
+            st.error("Please upload both the CSV and PDF files.")
+            st.stop()
+        
+        if not unit_input or not pdf_input:
+            st.error("Please enter both a Unit Number and a Brochure Section Name.")
             st.stop()
 
-        # Step C: Generate Dynamic Offer Letter (Pages 1-2)
-        with st.spinner("Generating Offer Letter..."):
-            try:
-                generated_pdf_bytes = generate_offer_pdf(unit_data)
-            except Exception as e:
-                st.error(f"Error generating dynamic PDF: {e}")
-                st.stop()
+        # --- PROCESSING ---
+        
+        # 1. Get Logo
+        st.toast("Fetching Logo...")
+        logo_bytes = download_logo(LOGO_URL)
 
-        # Step D: Merge PDFs
+        # 2. Get CSV Data
         try:
-            final_pdf_writer = PdfWriter()
-            
-            # 1. Add the Generated Cover & Details
-            reader_generated = PdfReader(io.BytesIO(generated_pdf_bytes))
-            for page in reader_generated.pages:
-                final_pdf_writer.add_page(page)
-                
-            # 2. Add Static Pages from Brochure (Strategy: Extract relevant ones)
-            # We add Intro and Masterplan first (if found and not duplicates)
-            reader_brochure = PdfReader(io.BytesIO(pdf_bytes))
-            added_indices = set()
-            
-            # Helper to add page if exists and unique
-            def add_page_indices(indices, label):
-                if indices:
-                    for idx in indices:
-                        if idx not in added_indices and idx < len(reader_brochure.pages):
-                            final_pdf_writer.add_page(reader_brochure.pages[idx])
-                            added_indices.add(idx)
-                            st.toast(f"Added {label} page {idx+1}")
+            df = pd.read_csv(csv_file)
+            df.columns = df.columns.str.strip()
+            unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
+            unit_data = unit_row.iloc[0].to_dict()
+        except Exception as e:
+            st.error(f"CSV Error: {e}")
+            st.stop()
 
-            add_page_indices(intro_pages, "Introduction")
-            add_page_indices(masterplan_pages, "Master Plan")
-            add_page_indices(relevant_pages, "Unit Specifics")
+        # 3. Search PDF (Limited to 4 pages)
+        with st.spinner(f"Searching brochure for '{pdf_input}'..."):
+            pdf_bytes = pdf_file.read()
             
-            # If we missed specific pages, just append the rest or specific generic ones?
-            # For now, we ensure the generated parts + the found specific parts are there.
-            # To fill the 13 pages or make it look like the sample, we might need more logic.
-            # But strictly following the prompt: "Insert specific unit details... others static extracted"
+            # STRICT LIMIT: 4 Pages max
+            found_page_indices = find_limited_pages_in_pdf(pdf_bytes, pdf_input, limit=4)
             
-            # Save final output
-            output_buffer = io.BytesIO()
-            final_pdf_writer.write(output_buffer)
+            if not found_page_indices:
+                st.warning(f"No pages found in PDF containing: '{pdf_input}'. Proceeding with text only.")
+            else:
+                st.success(f"Found {len(found_page_indices)} relevant pages in brochure.")
+
+        # 4. Generate Main Document (Cover + Details)
+        with st.spinner("Generating Offer Letter..."):
+            main_pdf_bytes = generate_offer_pdf(unit_data, pdf_input, logo_bytes)
+
+        # 5. Merge PDFs (Main + Extracted Brochure Pages)
+        try:
+            final_writer = PdfWriter()
+            
+            # Add Generated Pages
+            reader_generated = PdfReader(BytesIO(main_pdf_bytes))
+            for page in reader_generated.pages:
+                final_writer.add_page(page)
+            
+            # Add Extracted Brochure Pages (Max 4)
+            if found_page_indices:
+                reader_brochure = PdfReader(BytesIO(pdf_bytes))
+                for idx in found_page_indices:
+                    if idx < len(reader_brochure.pages):
+                        final_writer.add_page(reader_brochure.pages[idx])
+
+            # Save Output
+            output_buffer = BytesIO()
+            final_writer.write(output_buffer)
             output_buffer.seek(0)
-            
-            # Step E: Provide Download
-            st.success("Offer Letter Generated Successfully!")
+
+            # Download Button
+            st.success("Offer Letter Generated!")
             
             st.download_button(
-                label="📥 Download Complete Offer Letter PDF",
+                label="📥 Download Offer Letter PDF",
                 data=output_buffer,
                 file_name=f"Offer_Letter_{unit_input}.pdf",
                 mime="application/pdf"
             )
             
-            # Show a preview of what was found
-            with st.expander("See Extracted Data"):
-                st.json(unit_data)
-                
         except Exception as e:
             st.error(f"Error merging PDFs: {e}")
-            st.stop()
 
 if __name__ == "__main__":
     main()
