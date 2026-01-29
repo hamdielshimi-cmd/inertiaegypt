@@ -1,0 +1,7 @@
+﻿streamlit
+pandas
+PyPDF2
+fpdf
+pdfplumber
+reportlab
+Pillow
