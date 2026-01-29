@@ -5,3 +5,5 @@ fpdf
 pdfplumber
 reportlab
 Pillow
+requests 
+
