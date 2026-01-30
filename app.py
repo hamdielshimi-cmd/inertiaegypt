@@ -369,25 +369,52 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     buffer.seek(0)
     return buffer.getvalue()
 
-def load_csv_data(csv_file):
-    """Load CSV data with proper encoding handling."""
+def load_inventory_data(file):
+    """
+    Load inventory data from CSV or Excel file with proper encoding handling.
+    Supports: .csv, .xlsx, .xls
+    Returns the dataframe or None if error.
+    """
     try:
-        csv_file.seek(0)
-        encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
+        # Get file extension
+        file_name = file.name
+        file_ext = os.path.splitext(file_name)[1].lower()
         
-        for encoding in encodings_to_try:
+        # Reset file pointer to beginning
+        file.seek(0)
+        
+        # Handle Excel files
+        if file_ext in ['.xlsx', '.xls']:
             try:
-                csv_file.seek(0)
-                df = pd.read_csv(csv_file, encoding=encoding)
+                df = pd.read_excel(file, engine='openpyxl' if file_ext == '.xlsx' else None)
                 df.columns = df.columns.str.strip()
                 return df
-            except (UnicodeDecodeError, pd.errors.EmptyDataError):
-                continue
+            except Exception as e:
+                st.error(f"Error reading Excel file: {e}")
+                return None
         
-        st.error("Could not read CSV file with any standard encoding.")
-        return None
+        # Handle CSV files
+        elif file_ext == '.csv':
+            encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
+            
+            for encoding in encodings_to_try:
+                try:
+                    file.seek(0)
+                    df = pd.read_csv(file, encoding=encoding)
+                    df.columns = df.columns.str.strip()
+                    return df
+                except (UnicodeDecodeError, pd.errors.EmptyDataError):
+                    continue
+            
+            st.error("Could not read CSV file with any standard encoding.")
+            return None
+        
+        else:
+            st.error(f"Unsupported file format: {file_ext}. Please upload .csv, .xlsx, or .xls file.")
+            return None
+        
     except Exception as e:
-        st.error(f"Error loading CSV: {e}")
+        st.error(f"Error loading file: {e}")
         return None
 
 # --- MAIN APPLICATION ---
@@ -401,10 +428,18 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        csv_file = st.file_uploader("📊 Upload Inventory CSV", type=['csv'], help="Upload your unit inventory spreadsheet")
+        inventory_file = st.file_uploader(
+            "📊 Upload Inventory File", 
+            type=['csv', 'xlsx', 'xls'], 
+            help="Upload your unit inventory (CSV or Excel)"
+        )
     
     with col2:
-        pdf_file = st.file_uploader("📄 Upload Project E-Brochure PDF", type=['pdf'], help="Upload the project brochure")
+        pdf_file = st.file_uploader(
+            "📄 Upload Project E-Brochure PDF", 
+            type=['pdf'], 
+            help="Upload the project brochure"
+        )
     
     st.markdown("---")
     
@@ -430,7 +465,7 @@ def main():
         unit_input = st.text_input(
             "Unit Number",
             placeholder="e.g., JF11-VSV-001",
-            help="Enter the exact unit number from your CSV"
+            help="Enter the exact unit number from your inventory file"
         )
     
     with col_b:
@@ -449,8 +484,8 @@ def main():
             )
     
     # === PREVIEW UNIT DATA ===
-    if csv_file and unit_input:
-        df = load_csv_data(csv_file)
+    if inventory_file and unit_input:
+        df = load_inventory_data(inventory_file)
         if df is not None:
             unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
             
@@ -469,14 +504,14 @@ def main():
                         st.metric("Price", unit_data.get('Final Price', 'N/A'))
                         st.metric("Status", unit_data.get('Status', 'N/A'))
             else:
-                st.error(f"❌ Unit number '{unit_input}' not found in CSV.")
+                st.error(f"❌ Unit number '{unit_input}' not found in inventory file.")
     
     st.markdown("---")
     
     # === GENERATE BUTTON ===
     if st.button("🚀 Generate Professional Offer Letter", type="primary", use_container_width=True):
-        if not csv_file or not pdf_file:
-            st.error("⚠️ Please upload both CSV and PDF files.")
+        if not inventory_file or not pdf_file:
+            st.error("⚠️ Please upload both inventory file and PDF brochure.")
             st.stop()
         
         if not unit_input or not search_term:
@@ -492,17 +527,17 @@ def main():
         progress_bar.progress(10)
         logo_bytes = download_logo(LOGO_URL)
         
-        # 2. CSV Data
+        # 2. Inventory Data
         status.text("📊 Loading unit data...")
         progress_bar.progress(25)
-        df = load_csv_data(csv_file)
+        df = load_inventory_data(inventory_file)
         if df is None:
-            st.error("Failed to load CSV data.")
+            st.error("Failed to load inventory data.")
             st.stop()
         
         unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
         if unit_row.empty:
-            st.error(f"Unit '{unit_input}' not found.")
+            st.error(f"Unit '{unit_input}' not found in inventory.")
             st.stop()
         
         unit_data = unit_row.iloc[0].to_dict()
@@ -556,4 +591,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
