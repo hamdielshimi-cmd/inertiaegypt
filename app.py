@@ -258,6 +258,35 @@ def generate_offer_pdf(unit_data, pdf_search_term, logo_bytes):
     buffer.seek(0)
     return buffer.getvalue()
 
+def load_csv_data(csv_file):
+    """
+    Load CSV data with proper encoding handling.
+    Returns the dataframe or None if error.
+    """
+    try:
+        # Reset file pointer to beginning
+        csv_file.seek(0)
+        
+        # Try different encodings
+        encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
+        
+        for encoding in encodings_to_try:
+            try:
+                csv_file.seek(0)
+                df = pd.read_csv(csv_file, encoding=encoding)
+                df.columns = df.columns.str.strip()
+                return df
+            except (UnicodeDecodeError, pd.errors.EmptyDataError):
+                continue
+        
+        # If all encodings fail
+        st.error("Could not read CSV file with any standard encoding.")
+        return None
+        
+    except Exception as e:
+        st.error(f"Error loading CSV: {e}")
+        return None
+
 # --- MAIN APPLICATION ---
 
 def main():
@@ -292,11 +321,8 @@ def main():
 
     # --- SMART MAPPING LOGIC ---
     if csv_file and unit_input:
-        try:
-            # utf-8-sig handles hidden BOM characters from Excel CSVs
-            df = pd.read_csv(csv_file, encoding='utf-8-sig')
-            df.columns = df.columns.str.strip()
-            
+        df = load_csv_data(csv_file)
+        if df is not None:
             # Find the unit
             unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
             
@@ -310,10 +336,6 @@ def main():
                     pdf_input = st.session_state.pdf_search_term
             else:
                 st.error("Unit number not found in CSV.")
-                st.stop()
-        except Exception as e:
-            st.error(f"Error processing CSV: {e}")
-            st.stop()
 
     # --- GENERATE BUTTON ---
     generate_btn = st.button("Generate Offer Letter", type="primary", use_container_width=True)
@@ -334,17 +356,22 @@ def main():
         logo_bytes = download_logo(LOGO_URL)
 
         # 2. Get CSV Data
-        try:
-            df = pd.read_csv(csv_file, encoding='utf-8-sig')
-            df.columns = df.columns.str.strip()
-            unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
-            unit_data = unit_row.iloc[0].to_dict()
-        except Exception as e:
-            st.error(f"CSV Error: {e}")
+        df = load_csv_data(csv_file)
+        if df is None:
+            st.error("Failed to load CSV data.")
             st.stop()
+        
+        unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
+        if unit_row.empty:
+            st.error(f"Unit number '{unit_input}' not found in CSV.")
+            st.stop()
+        
+        unit_data = unit_row.iloc[0].to_dict()
 
         # 3. Search PDF (Limited to 4 pages)
         with st.spinner(f"Searching brochure for '{pdf_input}'..."):
+            # Reset PDF file pointer and read
+            pdf_file.seek(0)
             pdf_bytes = pdf_file.read()
             
             # STRICT LIMIT: 4 Pages max
