@@ -4,11 +4,12 @@ import io
 import re
 import requests
 from io import BytesIO
+from datetime import datetime
 from PIL import Image as PILImage
 from PyPDF2 import PdfReader, PdfWriter
 import pdfplumber
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -90,30 +91,91 @@ def generate_offer_pdf(unit_data, pdf_search_term, logo_bytes):
 
     # Styles
     styles = getSampleStyleSheet()
-    style_title = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, textColor=COLOR_PRIMARY, spaceAfter=30, alignment=TA_CENTER)
-    style_body = ParagraphStyle('CustomBody', parent=styles['BodyText'], fontSize=11, leading=16, spaceAfter=12, alignment=TA_LEFT)
-    style_highlight = ParagraphStyle('Highlight', parent=styles['Heading2'], fontSize=14, textColor=COLOR_ACCENT, spaceBefore=20, spaceAfter=10)
+    
+    # --- CUSTOM STYLES ---
+    style_title = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=COLOR_PRIMARY,
+        spaceAfter=10,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    style_date = ParagraphStyle(
+        'DateStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor="#555555",
+        alignment=TA_CENTER
+    )
+
+    style_highlight = ParagraphStyle(
+        'Highlight',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=COLOR_ACCENT,
+        spaceBefore=20,
+        spaceAfter=10
+    )
+
+    style_offer = ParagraphStyle(
+        'OfferStatement',
+        parent=styles['BodyText'],
+        fontSize=12,
+        leading=16,
+        textColor=COLOR_PRIMARY,
+        spaceAfter=20,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+
+    style_body = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=11,
+        leading=16,
+        spaceAfter=8,
+        alignment=TA_LEFT
+    )
+
+    style_label = ParagraphStyle(
+        'Label',
+        parent=styles['BodyText'],
+        fontSize=11,
+        leading=14,
+        alignment=TA_LEFT,
+        fontName='Helvetica-Bold',
+        textColor=COLOR_PRIMARY
+    )
 
     # --- PAGE 1: COVER WITH LOGO ---
     if logo_bytes:
         try:
             img_reader = ImageReader(logo_bytes)
-            # Calculate aspect ratio to fit width ~4 inches
-            img_width = 4 * inch
+            img_width = 3.5 * inch
             img_height = (img_reader.getSize()[1] / img_reader.getSize()[0]) * img_width
             
             elements.append(Image(logo_bytes, width=img_width, height=img_height, hAlign='CENTER'))
             elements.append(Spacer(1, 0.5*inch))
         except:
-            st.warning("Logo file format not supported for PDF generation.")
+            pass # Skip logo if error
 
     elements.append(Paragraph("JEFaira - Vaya", style_title))
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Spacer(1, 0.1*inch))
     elements.append(Paragraph("RESERVATION & OFFER LETTER", style_title))
     elements.append(Spacer(1, 2*inch))
-    elements.append(Paragraph("Prepared for:", style_body))
+    
+    # Add Date
+    current_date = datetime.now().strftime("%B %d, %Y")
+    elements.append(Paragraph(f"Date: {current_date}", style_date))
+    elements.append(Spacer(1, 0.5*inch))
+
+    elements.append(Paragraph("Prepared for:", style_label))
     elements.append(Paragraph(f"Unit Reference: <b>{unit_data['Unit Number']}</b>", style_highlight))
-    elements.append(Spacer(1, 1*inch))
+    
+    elements.append(Spacer(1, 2*inch))
     elements.append(Paragraph("Inertia Properties", style_body))
     elements.append(Paragraph("www.inertiaegypt.com", style_body))
     
@@ -123,30 +185,66 @@ def generate_offer_pdf(unit_data, pdf_search_term, logo_bytes):
     elements.append(Paragraph("UNIT DETAILS", style_title))
     elements.append(Spacer(1, 0.3*inch))
 
+    # The specific paragraph requested
+    # Format: Vaya JF11-VSV-001. Una Villa. BUA 191. 4 bedrooms. Price = 12,500,000. 5% DP. Delivery 4 years.
     details_text = (
         f"Vaya <b>{unit_data['Unit Number']}</b>. "
         f"{unit_data['Dev Name']}. "
-        f"BUA {unit_data['BUA with Terraces']} sqm. "
+        f"BUA {unit_data['BUA with Terraces']}. "
         f"{unit_data['No.Bedrooms']} Bedrooms. "
         f"Price = {unit_data['Final Price']}. "
-        f"5% Down Payment. Delivery {unit_data['Delivery Date']}."
+        f"5% DP. Delivery {unit_data['Delivery Date']}."
     )
-    elements.append(Paragraph(details_text, style_body))
-    elements.append(Spacer(1, 0.5*inch))
+    
+    elements.append(Paragraph(details_text, style_offer))
+    elements.append(HRFlowable(width="80%", thickness=1, lineCap='round', color=COLOR_ACCENT))
+    elements.append(Spacer(1, 0.4*inch))
 
     elements.append(Paragraph("SPECIFICATION SUMMARY", style_highlight))
-    details_table = f"""
-    <b>Development:</b> {unit_data['Dev Name']}<br/>
-    <b>Type:</b> {unit_data['Type']} - {unit_data['Type 4']}<br/>
-    <b>Floor:</b> {unit_data['Floor']}<br/>
-    <b>Bedrooms:</b> {unit_data['No.Bedrooms']}<br/>
-    <b>BUA with Terraces:</b> {unit_data['BUA with Terraces']} m²<br/>
-    <b>Price:</b> {unit_data['Final Price']} EGP<br/>
-    <b>Maid Room:</b> {unit_data['Maid Room']}<br/>
-    <b>Status:</b> {unit_data['Status']}
+    
+    # Clean Table Layout
+    details_html = f"""
+    <table width="100%" style="font-size: 11pt;">
+        <tr>
+            <td width="40%"><b>Development:</b></td>
+            <td width="60%">{unit_data['Dev Name']}</td>
+        </tr>
+        <tr>
+            <td><b>Type:</b></td>
+            <td>{unit_data['Type']} - {unit_data['Type 4']}</td>
+        </tr>
+        <tr>
+            <td><b>Floor:</b></td>
+            <td>{unit_data['Floor']}</td>
+        </tr>
+        <tr>
+            <td><b>Bedrooms:</b></td>
+            <td>{unit_data['No.Bedrooms']}</td>
+        </tr>
+        <tr>
+            <td><b>BUA with Terraces:</b></td>
+            <td>{unit_data['BUA with Terraces']} m²</td>
+        </tr>
+        <tr>
+            <td><b>Garden Area:</b></td>
+            <td>{unit_data['Garden']} m²</td>
+        </tr>
+        <tr>
+            <td><b>Price:</b></td>
+            <td>{unit_data['Final Price']} EGP</td>
+        </tr>
+        <tr>
+            <td><b>Maid Room:</b></td>
+            <td>{unit_data['Maid Room']}</td>
+        </tr>
+        <tr>
+            <td><b>Status:</b></td>
+            <td>{unit_data['Status']}</td>
+        </tr>
+    </table>
     """
-    elements.append(Paragraph(details_table, style_body))
-    elements.append(Spacer(1, 0.5*inch))
+    elements.append(Paragraph(details_html, style_body))
+    elements.append(Spacer(1, 0.8*inch))
     
     terms = """
     <i>TERMS & CONDITIONS:</i><br/>
@@ -195,6 +293,7 @@ def main():
     # --- SMART MAPPING LOGIC ---
     if csv_file and unit_input:
         try:
+            # utf-8-sig handles hidden BOM characters from Excel CSVs
             df = pd.read_csv(csv_file, encoding='utf-8-sig')
             df.columns = df.columns.str.strip()
             
@@ -205,13 +304,10 @@ def main():
                 unit_data = unit_row.iloc[0].to_dict()
                 
                 # If the user hasn't manually typed a search term yet, 
-                # Auto-fill it with the 'Dev Name' from the CSV (The Smart Solution)
+                # Auto-fill it with the 'Dev Name' from the CSV
                 if not pdf_input: 
                     st.session_state.pdf_search_term = unit_data.get('Dev Name', '')
                     pdf_input = st.session_state.pdf_search_term
-                    # Rerun to update the text input value (streamlit quirk)
-                    # st.rerun() # Optional: might flicker, so we let the user see the value in the logic below
-                
             else:
                 st.error("Unit number not found in CSV.")
                 st.stop()
@@ -299,4 +395,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
