@@ -1,16 +1,17 @@
 
 
-I have updated the script to address all your requests:
+The error happened because you accidentally pasted the **text "I have updated the script..."** into your `app.py` file. Python files cannot have English sentences like that at the top; they must only contain code.
 
-1.  **2-Page Layout**: I moved the **Details Table** and **Terms** from Page 2 to Page 1. Page 1 now contains the full offer details, and Page 2 contains the images.
-2.  **Added Footer**: I added a custom footer class to display the Inertia Headquarters address and hotline at the bottom of every page.
-3.  **Confirmation**: Yes, the app fetches the **exact unit** based on the ID you type. It fetches the **correct images** because it scans the PDF *specifically* for the pages containing the "Unit Type" you select (e.g., "The Una Villa").
+**Do this:**
+1.  Delete the **first 3 lines** of your `app.py` file (the text that says "I have updated the script...").
+2.  Keep the import statements.
+3.  **Then**, paste this **clean code** (which contains the `Footer` class and the updated `generate_compact_offer_pdf` function) into the correct spot in your file.
 
-Replace the **`generate_compact_offer_pdf`** function in your `app.py` with this new version, and add the **`Footer`** class at the bottom of the helper functions section.
-
-### 1. Add this `Footer` class near the top of your helper functions:
+**Where to paste this:**
+Delete the old `def generate_compact_offer_pdf` function in your file. Paste this entire block in its place.
 
 ```python
+# --- ADD THIS NEW CLASS FOR THE FOOTER ---
 class Footer:
     def __init__(self, canvas, doc):
         self.canvas = canvas
@@ -28,18 +29,15 @@ class Footer:
         self.canvas.setFont("Helvetica", 7)
         self.canvas.setFillColor(colors.black)
         
-        # Draw footer text (Split into two parts if needed or one long string)
+        # Draw footer text
         footer_text = "INERTIA HEADQUARTERS, Building 06. Cairo West Business Park. KM 22, Cairo-Alexandria, Desert Road, Giza | Hot Line 19655"
         
         # Draw text centered at bottom
         self.canvas.drawCentredString(4 * inch, 0.7 * inch, footer_text)
         
         self.canvas.restoreState()
-```
 
-### 2. Replace the entire `generate_compact_offer_pdf` function with this updated version:
-
-```python
+# --- REPLACE THE OLD FUNCTION WITH THIS ONE ---
 def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     """
     Generate a compact, professional 2-page offer letter.
