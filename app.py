@@ -1,17 +1,4 @@
-
-
-The error happened because you accidentally pasted the **text "I have updated the script..."** into your `app.py` file. Python files cannot have English sentences like that at the top; they must only contain code.
-
-**Do this:**
-1.  Delete the **first 3 lines** of your `app.py` file (the text that says "I have updated the script...").
-2.  Keep the import statements.
-3.  **Then**, paste this **clean code** (which contains the `Footer` class and the updated `generate_compact_offer_pdf` function) into the correct spot in your file.
-
-**Where to paste this:**
-Delete the old `def generate_compact_offer_pdf` function in your file. Paste this entire block in its place.
-
-```python
-# --- ADD THIS NEW CLASS FOR THE FOOTER ---
+python
 class Footer:
     def __init__(self, canvas, doc):
         self.canvas = canvas
@@ -29,15 +16,18 @@ class Footer:
         self.canvas.setFont("Helvetica", 7)
         self.canvas.setFillColor(colors.black)
         
-        # Draw footer text
+        # Draw footer text (Split into two parts if needed or one long string)
         footer_text = "INERTIA HEADQUARTERS, Building 06. Cairo West Business Park. KM 22, Cairo-Alexandria, Desert Road, Giza | Hot Line 19655"
         
         # Draw text centered at bottom
         self.canvas.drawCentredString(4 * inch, 0.7 * inch, footer_text)
         
         self.canvas.restoreState()
+```
 
-# --- REPLACE THE OLD FUNCTION WITH THIS ONE ---
+### 2. Replace the entire `generate_compact_offer_pdf` function with this updated version:
+
+```python
 def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     """
     Generate a compact, professional 2-page offer letter.
@@ -249,4 +239,3 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     doc.build(elements, onFirstPage=Footer, onLaterPages=Footer)
     buffer.seek(0)
     return buffer.getvalue()
-```
