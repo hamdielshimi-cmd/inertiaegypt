@@ -1,4 +1,3 @@
-python
 class Footer:
     def __init__(self, canvas, doc):
         self.canvas = canvas
@@ -25,9 +24,6 @@ class Footer:
         self.canvas.restoreState()
 
 
-### 2. Replace the entire `generate_compact_offer_pdf` function with this updated version:
-
-python
 def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     """
     Generate a compact, professional 2-page offer letter.
@@ -45,8 +41,8 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
         pagesize=A4, 
         rightMargin=50, 
         leftMargin=50, 
-        topMargin=40, # Reduced top margin slightly to fit more content
-        bottomMargin=40 # Reduced bottom margin for footer
+        topMargin=40,  # Reduced top margin slightly to fit more content
+        bottomMargin=40  # Reduced bottom margin for footer
     )
     
     elements = []
@@ -112,7 +108,7 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     if logo_bytes:
         try:
             img_reader = ImageReader(logo_bytes)
-            img_width = 2.5 * inch # Slightly smaller logo
+            img_width = 2.5 * inch  # Slightly smaller logo
             img_height = (img_reader.getSize()[1] / img_reader.getSize()[0]) * img_width
             elements.append(Image(logo_bytes, width=img_width, height=img_height, hAlign='CENTER'))
             elements.append(Spacer(1, 0.2*inch))
@@ -161,7 +157,7 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#EEEEEE')),
         ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(COLOR_PRIMARY)),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9), # Slightly smaller font
+        ('FONTSIZE', (0, 0), (-1, -1), 9),  # Slightly smaller font
         ('PADDING', (0, 0), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -184,11 +180,10 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     elements.append(Spacer(1, 0.1*inch))
     
     # Company Info on Page 1 bottom
-# Company Info on Page 1 bottom
-elements.append(HRFlowable(width="80%", thickness=1, color=colors.lightgrey))
-elements.append(Spacer(1, 0.1*inch))
-elements.append(Paragraph("<b>Inertia Properties</b>", ParagraphStyle('Company', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER, fontName='Helvetica-Bold')))
-elements.append(Paragraph("www.inertiaegypt.com", ParagraphStyle('Web', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER)))
+    elements.append(HRFlowable(width="80%", thickness=1, color=colors.lightgrey))
+    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Paragraph("<b>Inertia Properties</b>", ParagraphStyle('Company', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER, fontName='Helvetica-Bold')))
+    elements.append(Paragraph("www.inertiaegypt.com", ParagraphStyle('Web', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER)))
     
     elements.append(PageBreak())
     
@@ -237,9 +232,6 @@ elements.append(Paragraph("www.inertiaegypt.com", ParagraphStyle('Web', parent=s
             elements.append(Spacer(1, 0.2*inch))
     
     # Build PDF with Footer on all pages
-    doc.build(elements, onFirstPage=Footer, onLaterPages=Footer)
+    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
     buffer.seek(0)
     return buffer.getvalue()
-
-
-
