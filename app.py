@@ -195,7 +195,7 @@ def main():
     # --- SMART MAPPING LOGIC ---
     if csv_file and unit_input:
         try:
-            df = pd.read_csv(csv_file)
+            df = pd.read_csv(csv_file, encoding='utf-8-sig')
             df.columns = df.columns.str.strip()
             
             # Find the unit
@@ -239,7 +239,7 @@ def main():
 
         # 2. Get CSV Data
         try:
-            df = pd.read_csv(csv_file)
+            df = pd.read_csv(csv_file, encoding='utf-8-sig')
             df.columns = df.columns.str.strip()
             unit_row = df[df['Unit Number'].astype(str).str.strip() == unit_input.strip()]
             unit_data = unit_row.iloc[0].to_dict()
@@ -299,3 +299,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
