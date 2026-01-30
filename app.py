@@ -23,11 +23,11 @@ class Footer:
         self.canvas.drawCentredString(4 * inch, 0.7 * inch, footer_text)
         
         self.canvas.restoreState()
-```
+
 
 ### 2. Replace the entire `generate_compact_offer_pdf` function with this updated version:
 
-```python
+python
 def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     """
     Generate a compact, professional 2-page offer letter.
@@ -239,3 +239,4 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     doc.build(elements, onFirstPage=Footer, onLaterPages=Footer)
     buffer.seek(0)
     return buffer.getvalue()
+
