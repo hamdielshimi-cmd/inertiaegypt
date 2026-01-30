@@ -186,7 +186,7 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     # Company Info on Page 1 bottom
     elements.append(HRFlowable(width="80%", thickness=1, color=colors.lightgrey))
     elements.append(Spacer(1, 0.1*inch))
-    elements.append(Paragraph("<b>Inertia Properties</b>", ParagraphStyle('Company', parent=styles['Normal', fontSize=10, alignment=TA_CENTER, fontName='Helvetica-Bold'])))
+    elements.append(Paragraph("<b>Inertia Properties</b>", ParagraphStyle('Company', parent=styles['Normal', fontSize=10, alignment=TA_CENTER, fontName ='Helvetica-Bold'])))
     elements.append(Paragraph("www.inertiaegypt.com", ParagraphStyle('Web', parent=styles['Normal', fontSize=9, alignment=TA_CENTER])))
     
     elements.append(PageBreak())
@@ -239,4 +239,5 @@ def generate_compact_offer_pdf(unit_data, images, logo_bytes):
     doc.build(elements, onFirstPage=Footer, onLaterPages=Footer)
     buffer.seek(0)
     return buffer.getvalue()
+
 
